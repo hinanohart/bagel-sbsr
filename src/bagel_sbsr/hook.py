@@ -120,6 +120,12 @@ def _wrap_forward_train(
             )
 
         if not isinstance(attention_mask, list):
+            # The flex_attention branch (upstream qwen2_navit.py:477-490) takes
+            # a BlockMask, not an additive mask. Wiring SBSR there requires a
+            # PyTorch flex_attention score_mod; that integration is deferred to
+            # P3 alongside the training entrypoint, which must assert
+            # `nested_attention_masks is not None` so this no-op path is never
+            # exercised during S1/S2/S3.
             return original(
                 packed_sequence=packed_sequence,
                 sample_lens=sample_lens,
@@ -129,7 +135,6 @@ def _wrap_forward_train(
                 packed_gen_token_indexes=packed_gen_token_indexes,
             )
 
-        sal_full = sbsr.bias.__self__  # for type-hint friendliness; we recompute below
         sal_gen = saliency_provider(
             packed_sequence[packed_gen_token_indexes], packed_gen_token_indexes
         )
@@ -137,6 +142,12 @@ def _wrap_forward_train(
         full_saliency = packed_sequence.new_zeros(packed_sequence.shape[0])
         full_saliency[packed_gen_token_indexes] = sal_gen.to(full_saliency.dtype)
 
+        # SDPA-path integration: additive bias on the per-sample attention_mask.
+        # Top-k sparsification is NOT applied here — once the mask is fed to
+        # `scaled_dot_product_attention(q, k, v, attn_mask)` we have no hook
+        # after q-k matmul and before softmax. Top-k therefore stays in the
+        # SBSR.forward() path (which is used by the flex_attention score_mod
+        # integration deferred to P3); the SDPA path is bias-only.
         biased_masks: list = []
         offset = 0
         for n, m in zip(sample_lens, attention_mask):
