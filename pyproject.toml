@@ -53,6 +53,8 @@ train = [
   "deepspeed>=0.15",
   "wandb>=0.18",
   "datasets>=3.1",
+  "requests>=2.32",
+  "runpod>=1.7",
 ]
 eval = [
   "clean-fid>=0.1.35",

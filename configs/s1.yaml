@@ -24,6 +24,14 @@ sbsr:
   mu_init: 0.25
   top_k: 64
   learnable: true
+  saliency_source: latent_magnitude   # one of {latent_magnitude, siglip_rollout}
+  apply_top_k: true
+
+# Loss weights (memory line 25 of architecture-final: CE:MSE = 0.25:1)
+loss:
+  ce_weight: 0.25
+  mse_weight: 1.0
+  fm_objective: rectified_flow   # rectified flow on FLUX VAE latent (16ch)
 
 data:
   dataset: coyo-700m
@@ -31,6 +39,9 @@ data:
   attribution_file: docs/DATA.md
   mirror_fallback_threshold: 0.3
   resolution: 512
+  vae_latent_channels: 16
+  shuffle_buffer: 10_000
+  num_workers: 4
 
 train:
   precision: bfloat16
@@ -47,7 +58,15 @@ train:
   max_grad_norm: 1.0
   nan_detect_consecutive: 100
   save_every: 2_500
+  rolling_save_every: 200       # light rolling ckpt for NaN-rollback
+  rolling_save_keep: 3
   log_every: 50
+
+deepspeed:
+  zero_stage: 2
+  cpu_offload: false
+  activation_checkpointing: true
+  gradient_checkpointing: true
 
 cluster:
   gpus: 4

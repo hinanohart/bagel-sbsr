@@ -65,13 +65,11 @@ def attention_rollout(
             raise ValueError(f"unknown head_fusion {head_fusion!r}")
 
         if discard_ratio > 0.0:
-            flat = fused.view(B, -1)
-            k = int(flat.shape[1] * discard_ratio)
+            k = int(T * discard_ratio)
             if k > 0:
-                threshold = flat.kthvalue(k, dim=-1, keepdim=True).values
-                fused = torch.where(
-                    fused >= threshold.unsqueeze(-1), fused, torch.zeros_like(fused)
-                )
+                # Per-row threshold: discard the bottom-k entries of each query row.
+                threshold = fused.kthvalue(k, dim=-1, keepdim=True).values
+                fused = torch.where(fused >= threshold, fused, torch.zeros_like(fused))
 
         identity = torch.eye(T, device=device, dtype=dtype)
         augmented = fused + identity
@@ -115,8 +113,12 @@ def saliency_from_attentions(
     saliency = cls_row[:, keep]
 
     if normalize:
-        s_max = saliency.amax(dim=-1, keepdim=True).clamp(min=1e-9)
+        s_max = saliency.amax(dim=-1, keepdim=True)
         s_min = saliency.amin(dim=-1, keepdim=True)
-        saliency = (saliency - s_min) / (s_max - s_min).clamp(min=1e-9)
+        denom = s_max - s_min
+        # If a row is all-equal, fall back to a neutral 0.5 saliency rather
+        # than degenerating to zeros (which would silently disable SBSR bias).
+        neutral = torch.full_like(saliency, 0.5)
+        saliency = torch.where(denom > 1e-9, (saliency - s_min) / denom.clamp(min=1e-9), neutral)
 
     return saliency

@@ -85,9 +85,26 @@ class SBSR(nn.Module):
         if self.top_k >= t_k:
             return logits
 
-        topk_vals, _ = logits.topk(self.top_k, dim=-1)
-        threshold = topk_vals[..., -1:].detach()
-        return torch.where(logits >= threshold, logits, logits.new_full((), float("-inf")))
+        _, topk_idx = logits.topk(self.top_k, dim=-1)
+        mask = torch.zeros_like(logits, dtype=torch.bool)
+        mask.scatter_(-1, topk_idx, True)
+        return logits.masked_fill(~mask, float("-inf"))
+
+    def top_k_mask(self, logits: torch.Tensor) -> torch.Tensor:
+        """Return an additive mask (0 inside top-k, -inf outside) without touching logits.
+
+        Useful in the SDPA path where we add the mask to the attention mask
+        rather than rewriting logits.
+        """
+        if self.top_k is None:
+            return torch.zeros_like(logits)
+        t_k = logits.shape[-1]
+        if self.top_k >= t_k:
+            return torch.zeros_like(logits)
+        _, topk_idx = logits.topk(self.top_k, dim=-1)
+        keep = torch.zeros_like(logits, dtype=torch.bool)
+        keep.scatter_(-1, topk_idx, True)
+        return torch.where(keep, torch.zeros_like(logits), logits.new_full((), float("-inf")))
 
     def forward(
         self,

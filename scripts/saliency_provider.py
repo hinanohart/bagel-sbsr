@@ -1,18 +1,26 @@
-"""Concrete saliency_provider for `bagel_sbsr.patch_bagel`.
+"""SigLIP2 rollout saliency provider (opt-in; default path is LatentMagnitudeProvider).
 
-Captures the BAGEL SigLIP2 vision tower's per-layer attentions via a forward
-hook, then runs `saliency_from_attentions` to produce a per-patch saliency
-vector. Designed to be called from the SBSR attention hook on every
-gen-expert forward.
+BAGEL upstream's SigLIP self-attention uses flash-attn2 and does *not* return
+attention weights, so rollout-based saliency requires patching SigLIP to use
+an `eager` / SDPA attention implementation that emits `attn_weights`.
 
-This sits outside src/bagel_sbsr/ because it imports BAGEL upstream
-(modeling.bagel.SiglipVisionModel) and so cannot live in the always-importable
-core package.
+This provider supports two operating modes:
+  1. `mode="hook"` (default): forward-hook on each SigLIP layer's `self_attn`
+     captures attention if and only if the layer's forward returns a 2-tuple
+     `(out, attn)`. With stock BAGEL this stays empty and we fall back to
+     uniform saliency (0.5), with a one-time warning.
+  2. `mode="strict"`: raises at first forward if no attention was captured.
+     Use when you have manually patched SigLIP to expose attentions.
+
+Default training (S1/S2/S3) uses `bagel_sbsr.LatentMagnitudeProvider` instead
+(no extra forward, no SigLIP patching required). This file is kept for the
+v0.2 SigLIP-rollout track.
 """
 
 from __future__ import annotations
 
 import sys
+import warnings
 import weakref
 from pathlib import Path
 
@@ -28,18 +36,25 @@ def _ensure_vendor_on_path(vendor: str | Path = "vendor/bagel-upstream") -> None
 
 
 class SigLIP2RolloutProvider:
-    """Forward-hook-based saliency provider.
+    """Forward-hook-based saliency provider (SigLIP2 attention rollout).
 
-    Usage:
-        provider = SigLIP2RolloutProvider(bagel_model)
-        patch_bagel(bagel_model, saliency_provider=provider, ...)
-
-    The provider attaches a forward hook on the vision tower that captures
-    per-layer attention weights at every forward pass; subsequent SBSR calls
-    consume the most recent capture.
+    Mapping caveat (v0.1.0): the ViT patch grid does not align 1:1 with the
+    BAGEL packed gen-token sequence in the general case. This provider
+    currently emits a *placeholder* mapping (first n_target patches) and
+    warns at instantiation. Callers who need precise alignment should
+    implement a `(latent_patch_row, latent_patch_col) -> vit_patch_index`
+    look-up table against the actual VAE / ViT patch geometry of their run.
     """
 
-    def __init__(self, bagel_model, *, head_fusion: str = "mean") -> None:
+    def __init__(
+        self,
+        bagel_model,
+        *,
+        head_fusion: str = "mean",
+        mode: str = "hook",
+    ) -> None:
+        if mode not in {"hook", "strict"}:
+            raise ValueError(f"mode must be 'hook' or 'strict'; got {mode!r}")
         _ensure_vendor_on_path()
         try:
             from modeling.bagel import SiglipVisionModel  # type: ignore[import-not-found]
@@ -54,38 +69,61 @@ class SigLIP2RolloutProvider:
                 f"bagel_model.vit_model is not SiglipVisionModel; got {type(vit).__name__}"
             )
 
+        warnings.warn(
+            "SigLIP2RolloutProvider: stock BAGEL SigLIP uses flash-attn and does "
+            "NOT return attention weights. This provider will fall back to "
+            "neutral saliency unless SigLIP is patched. Default training uses "
+            "bagel_sbsr.LatentMagnitudeProvider instead.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
         self._model_ref = weakref.ref(bagel_model)
         self._head_fusion = head_fusion
+        self._mode = mode
         self._captured: list[torch.Tensor] = []
+        self._handles: list = []
 
         for layer in vit.vision_model.encoder.layers:
-            layer.self_attn.register_forward_hook(self._capture_attn)
+            h = layer.self_attn.register_forward_hook(self._capture_attn)
+            self._handles.append(h)
 
-    def _capture_attn(self, module, inputs, output) -> None:
+    def _capture_attn(self, _module, _inputs, output) -> None:
         if isinstance(output, tuple) and len(output) > 1 and output[1] is not None:
             self._captured.append(output[1].detach())
 
     def reset(self) -> None:
+        """Clear captured attentions (call before every new batch's forward)."""
         self._captured.clear()
+
+    def remove_hooks(self) -> None:
+        for h in self._handles:
+            h.remove()
+        self._handles.clear()
 
     def __call__(
         self,
         packed_sequence_gen: torch.Tensor,
         packed_gen_token_indexes: torch.LongTensor,
     ) -> torch.Tensor:
-        if not self._captured:
-            return torch.zeros(packed_sequence_gen.shape[0], device=packed_sequence_gen.device)
-
-        sal = saliency_from_attentions(
-            self._captured,
-            cls_index=0,
-            normalize=True,
-            head_fusion=self._head_fusion,
-        )
-
-        flat = sal.reshape(-1)
         n_target = packed_sequence_gen.shape[0]
+        device = packed_sequence_gen.device
+
+        if not self._captured:
+            if self._mode == "strict":
+                raise RuntimeError("SigLIP2RolloutProvider strict mode: no attentions captured.")
+            return torch.full((n_target,), 0.5, device=device)
+
+        try:
+            sal = saliency_from_attentions(
+                self._captured, cls_index=0, normalize=True, head_fusion=self._head_fusion
+            )
+        finally:
+            # Discard captures after consumption to avoid memory leak.
+            self._captured.clear()
+
+        flat = sal.reshape(-1).to(device)
         if flat.numel() >= n_target:
-            return flat[:n_target].to(packed_sequence_gen.device)
-        pad = torch.zeros(n_target - flat.numel(), device=packed_sequence_gen.device)
-        return torch.cat([flat.to(packed_sequence_gen.device), pad])
+            return flat[:n_target]
+        pad = torch.full((n_target - flat.numel(),), 0.5, device=device)
+        return torch.cat([flat, pad])
