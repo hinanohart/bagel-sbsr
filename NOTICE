@@ -1,0 +1,22 @@
+BAGEL-SBSR
+Copyright 2026 bagel-sbsr contributors
+
+This product includes software developed by the bagel-sbsr contributors.
+
+This software builds on the following upstream projects:
+
+  * BAGEL-7B-MoT — Copyright 2025 ByteDance-Seed
+    Apache License 2.0
+    https://github.com/ByteDance-Seed/Bagel
+
+  * COYO-700M dataset — Copyright 2022 Kakao Brain
+    CC-BY-4.0 (data); MIT (tools)
+    https://github.com/kakaobrain/coyo-dataset
+
+  * SigLIP2 attention rollout follows Abnar & Zuidema (2020),
+    "Quantifying Attention Flow in Transformers" (arXiv:2005.00928).
+
+  * iMF objective follows Geng et al. (2025), arXiv:2512.02012.
+  * DMD2 follows Yin et al. (2024), arXiv:2405.14867.
+
+See LICENSE for the Apache License 2.0 text.
