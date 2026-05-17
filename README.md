@@ -34,16 +34,17 @@ uv pip install bagel-sbsr
 python -m bagel_sbsr.demo --prompt "a photograph of an astronaut riding a horse" --nfe 4
 ```
 
-## Repository layout
+## Repository layout (planned; scaffolded as empty dirs in v0.1.0.dev, populated phase-by-phase)
 
 ```
-src/bagel_sbsr/        # SBSR module, pipeline, distillation losses
-scripts/               # train_s1/s2/s3, eval, download, launch_runpod
+src/bagel_sbsr/        # SBSR module, pipeline, distillation losses (filled P2+)
+scripts/               # train_s1/s2/s3, eval, download_bagel, launch_runpod (filled P1+)
 tests/                 # unit + smoke tests
-comfyui/               # ComfyUI custom node
-demo/                  # Gradio HF Space app
-papers/                # preprint draft (LaTeX)
-experiments/_wip/      # failure museum (R8)
+comfyui/               # ComfyUI custom node (filled P7)
+demo/                  # Gradio HF Space app (filled P7)
+papers/                # preprint draft, LaTeX (filled P8)
+docs/                  # STATUS, TRAINING, DATA, ARCH (filled P0)
+experiments/_wip/      # failure museum (R8 convention)
 ```
 
 ## Training recipe (summary)
@@ -86,5 +87,5 @@ Issues and PRs welcome. Please run `ruff check` and `pytest -m smoke` before sub
 ## Acknowledgements
 
 - [BAGEL](https://github.com/ByteDance-Seed/Bagel) team for the Apache-2.0 MoT backbone
-- [iMeanFlow](https://github.com/Lyy-iiis/imeanflow) for the MIT reference implementation
+- [iMeanFlow](https://github.com/Lyy-iiis/imeanflow) for the MIT-licensed reference implementation (Apache-2.0 compatible)
 - [DMD2](https://tianweiy.github.io/dmd2/) for the distillation recipe
