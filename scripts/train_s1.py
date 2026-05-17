@@ -241,6 +241,29 @@ def _dry_run(cfg: dict) -> int:
 # ----- real train loop ---------------------------------------------------------
 
 
+def _bagel_forward_adapter(model, batch, latent, inferencer, ce_w, mse_w):
+    """Adapter from (image, caption) batch -> BAGEL packed Bagel.forward call.
+
+    Unimplemented in v0.1.0.dev — this is the bridge between
+    `scripts/coyo_dataloader.py:CoyoBatch` and the upstream `Bagel.forward`
+    signature documented at
+    `vendor/bagel-upstream/modeling/bagel/bagel.py:101-150` (sequence_length,
+    packed_text_ids, packed_text_indexes, sample_lens, packed_position_ids,
+    padded_latent, packed_timesteps, mse_loss_indexes, ce_loss_indexes,
+    packed_vae_token_indexes, patchified_vae_latent_shapes,
+    packed_latent_position_ids, ...).
+
+    See docs/TRAINING.md §"BAGEL forward adapter" for the contract.
+    """
+    raise NotImplementedError(
+        "BAGEL forward adapter is the v0.1.1 follow-up — wire batch -> "
+        "Bagel.forward(sequence_length, packed_text_ids, sample_lens, "
+        "padded_latent, packed_timesteps, mse_loss_indexes, ...) per "
+        "vendor/bagel-upstream/modeling/bagel/bagel.py:101. v0.1.0.dev "
+        "ships the SBSR hook + loss kernels + dry-run, not the collator."
+    )
+
+
 def _build_inferencer_and_lora(cfg: dict):
     """Build BAGEL + LoRA + SBSR (real path). Imports vendor lazily."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -358,15 +381,20 @@ def _real_train(cfg: dict, resume: Path | None) -> int:
                     latent = latent.latent_dist.sample()
             provider.set_latent(latent)
 
-            # Forward: rectified flow MSE + caption CE
-            outputs = model(
-                images=batch.images,
-                captions=batch.captions,
-                vae_latent=latent,
-                ce_weight=ce_w,
-                mse_weight=mse_w,
+            # ADAPTER SLOT — wire the BAGEL Bagel.forward call here.
+            # The real upstream signature is
+            #   model(sequence_length=N, packed_text_ids=..., packed_text_indexes=...,
+            #         sample_lens=..., packed_position_ids=..., padded_latent=...,
+            #         patchified_vae_latent_shapes=..., packed_latent_position_ids=...,
+            #         packed_vae_token_indexes=..., packed_timesteps=...,
+            #         mse_loss_indexes=..., ce_loss_indexes=..., packed_label_ids=...)
+            # (see vendor/bagel-upstream/modeling/bagel/bagel.py:101). Building the
+            # packed-sequence collator from a (image, caption) batch is the v0.1.1
+            # adapter task. v0.1.0.dev provides the SBSR hook + loss kernels; the
+            # adapter is intentionally not written without GPU-side iteration.
+            loss, ce_w_unused, mse_w_unused = _bagel_forward_adapter(
+                model, batch, latent, inferencer, ce_w, mse_w
             )
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs
             accelerator.backward(loss)
             if accelerator.sync_gradients:
                 accelerator.clip_grad_norm_(trainable, cfg["train"]["max_grad_norm"])

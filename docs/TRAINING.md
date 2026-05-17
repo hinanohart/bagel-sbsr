@@ -3,6 +3,41 @@
 Three-stage curriculum. All stages assume the BAGEL-7B-MoT backbone has been downloaded
 via `scripts/download_bagel.py` (uses `HF_TOKEN` from environment).
 
+## BAGEL forward adapter (v0.1.1 follow-up)
+
+`scripts/train_s1.py`, `train_s2.py`, and `train_s3.py` ship the SBSR
+hook, the iMF/DMD2 loss kernels, the COYO streaming dataloader, the
+NaN-detect rollback, and the safetensors checkpoint manifest. What is
+**not** shipped in v0.1.0.dev is the packed-sequence collator that
+bridges a `(image, caption)` batch to the upstream `Bagel.forward`
+signature:
+
+```python
+model(
+    sequence_length=N,
+    packed_text_ids=...,            # 1-D long, packed tokenizer output
+    packed_text_indexes=...,        # 1-D long, where text tokens land in seq
+    sample_lens=[n_i for i in B],
+    packed_position_ids=...,
+    padded_latent=...,              # FLUX VAE latent per sample
+    patchified_vae_latent_shapes=[(h, w), ...],
+    packed_latent_position_ids=...,
+    packed_vae_token_indexes=...,
+    packed_timesteps=...,           # 1-D float, flow-matching t
+    mse_loss_indexes=...,           # bool mask for MSE-loss positions
+    ce_loss_indexes=...,            # bool mask for CE-loss positions
+    packed_label_ids=...,
+)
+```
+(see `vendor/bagel-upstream/modeling/bagel/bagel.py:101`).
+
+Both `train_s1._bagel_forward_adapter` and
+`train_s2._bagel_velocity_adapter` raise `NotImplementedError` from a
+clearly labeled adapter slot. The adapter is intentionally not written
+without GPU-side iteration: shape/dtype mismatches in the collator are
+the kind of bug that needs a real BAGEL forward pass to surface, which
+this development environment does not have.
+
 ## Stage 1 — SBSR warm-up (LoRA)
 
 | Setting       | Value                                                                       |
@@ -53,9 +88,16 @@ Run: `uv run scripts/train_s3.py --config configs/s3.yaml`
 
 ## Totals
 
-- ~240h on 4×H100, total ~$2,880 at RunPod H100-SXM spot ($2.79-3.49/h)
-- Alternative: ~130h on 8×H100, total ~$2,879
-- Budget gate: $4,000 hard ceiling; auto-pause and notify user above this
+Wall-clock: ~240h on 4×H100. Total spend depends on the GPU pool:
+
+- H100 SXM on-demand (~$2.69-2.99/h × 4 × 240h): **~$2,580-$2,870**
+- H100 SXM spot when available: roughly half
+- H100 PCIe on-demand (~$1.99/h × 4 × 240h): **~$1,910**
+
+Budget gate: `safety.budget_hard_ceiling_usd` (default $4,000) is
+enforced by `scripts/launch_runpod.py` — the poll loop calls
+`runpod.terminate_pod` when accumulated cost exceeds the per-stage cap
+(`cluster.max_cost_usd`, clamped to the hard ceiling).
 
 ## Ablation grid
 

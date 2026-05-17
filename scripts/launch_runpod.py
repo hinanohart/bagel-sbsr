@@ -128,6 +128,8 @@ def main() -> int:
 
     pod_id = pod.get("id") if isinstance(pod, dict) else None
     print(f"Pod launched: {pod_id}")
+    budget_cap = float(spec_for_log["max_cost_usd"])
+    pod_started = time.time()
 
     while True:
         time.sleep(args.poll_seconds)
@@ -138,7 +140,30 @@ def main() -> int:
             continue
         state = status.get("desiredStatus") if isinstance(status, dict) else None
         runtime = status.get("runtime", {}) if isinstance(status, dict) else {}
-        print(f"  status={state} cost=${runtime.get('costPerHr', '?')}")
+        cost_per_hr_raw = runtime.get("costPerHr") if isinstance(runtime, dict) else None
+        try:
+            cost_per_hr = float(cost_per_hr_raw) if cost_per_hr_raw is not None else 0.0
+        except (TypeError, ValueError):
+            cost_per_hr = 0.0
+        elapsed_hr = (time.time() - pod_started) / 3600.0
+        accumulated_usd = cost_per_hr * elapsed_hr
+        print(
+            f"  status={state} cost=${cost_per_hr:.3f}/h "
+            f"elapsed={elapsed_hr:.2f}h accumulated=${accumulated_usd:.2f} cap=${budget_cap:.0f}"
+        )
+
+        if accumulated_usd > budget_cap:
+            print(
+                f"BUDGET CEILING REACHED (${accumulated_usd:.2f} > ${budget_cap:.0f}); "
+                f"terminating pod {pod_id}",
+                file=sys.stderr,
+            )
+            try:
+                runpod.terminate_pod(pod_id)
+            except Exception as e:
+                print(f"terminate failed ({_safe_str(e)})", file=sys.stderr)
+            return 1
+
         if state in ("EXITED", "TERMINATED", "FAILED"):
             return 0 if state == "EXITED" else 1
 

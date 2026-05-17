@@ -258,13 +258,19 @@ def _real_train(cfg: dict, track: str, resume: Path | None, s1_ckpt: Path | None
             eps = torch.randn_like(latent)
             x_t = (1 - t).view(-1, 1, 1, 1) * latent + t.view(-1, 1, 1, 1) * eps
 
-            v_student = student.predict_velocity(x_t, t, batch.captions)  # API contract
+            # ADAPTER SLOT — `student.predict_velocity(...)` is *not* a real
+            # BAGEL upstream method. The S2 adapter must call
+            # `Bagel.forward(...)` (see vendor/bagel-upstream/modeling/bagel/
+            # bagel.py:101) and extract the gen-expert velocity from the
+            # returned packed sequence at `packed_vae_token_indexes`. The
+            # iMF / DMD2 loss kernels above are correct; only the velocity
+            # extraction is unimplemented. See docs/TRAINING.md §adapter.
+            v_student, mu_real_pred, mu_fake_pred = _bagel_velocity_adapter(
+                student, teacher, mu_fake, x_t, t, batch.captions, track
+            )
             if track == "imf":
                 loss = imf_loss(v_student, x_t, t, t_prime, eps, latent)
             else:
-                with torch.no_grad():
-                    mu_real_pred = teacher.predict_velocity(x_t, t, batch.captions)
-                mu_fake_pred = mu_fake.predict_velocity(x_t, t, batch.captions)
                 grad_x_x_zero = (v_student - eps).detach()
                 loss = dmd_distribution_loss(mu_real_pred, mu_fake_pred, grad_x_x_zero)
 
@@ -274,7 +280,9 @@ def _real_train(cfg: dict, track: str, resume: Path | None, s1_ckpt: Path | None
 
             if track == "dmd2" and step % cfg["dmd2"]["fake_update_every"] == 0:
                 mu_fake_opt.zero_grad()
-                fake_pred = mu_fake.predict_velocity(x_t, t, batch.captions)
+                _, _, fake_pred = _bagel_velocity_adapter(
+                    student, teacher, mu_fake, x_t, t, batch.captions, "dmd2"
+                )
                 fake_target = v_student.detach()
                 fake_loss = fake_score_matching_loss(fake_pred, fake_target)
                 accelerator.backward(fake_loss)
@@ -309,6 +317,40 @@ def _real_train(cfg: dict, track: str, resume: Path | None, s1_ckpt: Path | None
         provider.reset()
 
     return 0
+
+
+def _bagel_velocity_adapter(student, teacher, mu_fake, x_t, t, captions, track):
+    """Adapter that calls Bagel.forward and extracts the gen-expert velocity.
+
+    Unimplemented in v0.1.0.dev — wire to upstream
+    `Bagel.forward(sequence_length=, packed_text_ids=, padded_latent=,
+    packed_timesteps=, packed_vae_token_indexes=, ...)`. The returned packed
+    sequence has the velocity at positions `packed_vae_token_indexes`; reshape
+    back to `(B, C, H, W)` using `patchified_vae_latent_shapes`.
+    """
+    raise NotImplementedError(
+        "BAGEL velocity adapter is the v0.1.1 follow-up — wire to "
+        "Bagel.forward (vendor/bagel-upstream/modeling/bagel/bagel.py:101) "
+        "and extract velocity at packed_vae_token_indexes."
+    )
+
+
+def _save_safetensors_s2(out_dir, step: int, model) -> Path:
+    """Save S2 winner ckpt under `gen/` prefix to bridge to S3."""
+    from safetensors.torch import save_file  # type: ignore[import-not-found]
+
+    ckpt = out_dir / f"ckpt-{step:08d}.safetensors"
+    flat: dict = {}
+    sbsr = getattr(model, "sbsr", None)
+    if sbsr is not None:
+        for k, v in sbsr.state_dict().items():
+            flat[f"sbsr/{k}"] = v.contiguous().detach().to(__import__("torch").float32).cpu()
+    for n, p in model.named_parameters():
+        if p.requires_grad and "sbsr" not in n:
+            flat[f"gen/{n}"] = p.contiguous().detach().to(__import__("torch").float32).cpu()
+    save_file(flat, str(ckpt))
+    (ckpt.with_suffix(ckpt.suffix + ".json")).write_text(json.dumps({"step": step}))
+    return ckpt
 
 
 def _clone_for_full_ft(teacher, cfg):

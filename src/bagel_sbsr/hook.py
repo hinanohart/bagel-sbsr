@@ -214,11 +214,15 @@ def _wrap_forward_train(
                 )
 
             if sbsr.top_k is not None and sample_gen.sum().item() > sbsr.top_k:
-                # Approximate top-k pre-softmax: keep the top-k bias columns
-                # per gen-query row, push the rest to -inf via the additive mask.
-                # We use the bias itself as the ranking key — since logits are
-                # not visible at this hook site, biasing by `bias` is a valid
-                # proxy under the SBSR assumption that saliency dominates.
+                # *Approximation* of top-k pre-softmax: the underlying QK^T
+                # logits are not visible at this hook site (SDPA computes
+                # logits + softmax in one call), so we rank columns by the
+                # SBSR bias itself. This is exact only when bias dominates
+                # the logits and approximate otherwise. The flex_attention
+                # path will replace this with a real score_mod (v0.2).
+                # Saliency-aware preservation: high-saliency keys are kept,
+                # low-saliency keys are dropped — which is the contracted
+                # behavior of SBSR sparse routing.
                 last_two = bias.view(-1, n, n)
                 _, topk_idx = last_two.topk(sbsr.top_k, dim=-1)
                 keep = torch.zeros_like(last_two, dtype=torch.bool)

@@ -142,9 +142,16 @@ def _real_train(
     )
 
     if s2_winner is not None:
-        _load_safetensors_into(model, s2_winner, key_prefix="lora/")
+        # S2 saves under `gen/` (full-FT weights); read those into the
+        # student's named parameters. S2 ckpt may also contain `sbsr/` —
+        # load both prefixes.
+        _load_safetensors_into(model, s2_winner, key_prefix="gen/")
+        _load_safetensors_into(model, s2_winner, key_prefix="sbsr/")
     if s1_ckpt is not None:
+        # S1 ckpt has `sbsr/` and `lora/`. Load both — `lora/` weights map
+        # onto the matching gen-expert params after S2 made them full FT.
         _load_safetensors_into(model, s1_ckpt, key_prefix="sbsr/")
+        _load_safetensors_into(model, s1_ckpt, key_prefix="lora/")
 
     trainable = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(
@@ -189,14 +196,15 @@ def _real_train(
                     latent = latent.latent_dist.sample()
             provider.set_latent(latent)
 
-            outputs = model(
-                images=batch.images,
-                captions=batch.captions,
-                vae_latent=latent,
-                ce_weight=cfg["loss"]["ce_weight"],
-                mse_weight=cfg["loss"]["mse_weight"],
+            # ADAPTER SLOT — same as S1; wire to real Bagel.forward.
+            loss = _bagel_forward_adapter_s3(
+                model,
+                batch,
+                latent,
+                inferencer,
+                cfg["loss"]["ce_weight"],
+                cfg["loss"]["mse_weight"],
             )
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs
             accelerator.backward(loss)
             accelerator.clip_grad_norm_(trainable, cfg["train"]["max_grad_norm"])
             opt.step()
@@ -219,6 +227,14 @@ def _real_train(
             json.dumps({"steps_completed": step, "elapsed_seconds": time.time() - t0}, indent=2)
         )
     return 0
+
+
+def _bagel_forward_adapter_s3(model, batch, latent, inferencer, ce_w, mse_w):
+    """Same contract as scripts/train_s1.py:_bagel_forward_adapter."""
+    raise NotImplementedError(
+        "BAGEL forward adapter (S3) is the v0.1.1 follow-up — wire batch -> "
+        "Bagel.forward per vendor/bagel-upstream/modeling/bagel/bagel.py:101."
+    )
 
 
 def _load_safetensors_into(model, path: Path, key_prefix: str) -> None:

@@ -22,9 +22,10 @@ Approach:
 ## SBSR module — what it does
 
 Given hidden states $H \in \mathbb{R}^{B \times T \times D}$ and a saliency map
-$s \in \mathbb{R}^{B \times T}$ derived from the SigLIP2 CLS attention rollout (no
-extra encoder), SBSR adds an additive bias to the attention logits computed inside
-BAGEL's generation expert:
+$s \in \mathbb{R}^{B \times T}$ (default in v0.1.0: per-patch L2 magnitude of the
+FLUX VAE latent; opt-in alternative: SigLIP2 CLS attention rollout, which requires
+patching SigLIP to expose attention weights), SBSR adds an additive bias to the
+attention logits computed inside BAGEL's generation expert:
 
 $$
 \ell_{ij} \mathrel{+}= \lambda (s_i + s_j) - \mu |s_i - s_j|
@@ -57,3 +58,13 @@ generation without de-railing understanding.
 - Audio. Out of v0.1 scope.
 - Any non-commercial backbone (Flux dev, Sana weights, SD 3.5, HunyuanDiT 1.0). The
   motivation for picking BAGEL specifically is full Apache-2.0 commercial use.
+- **Inference-time SBSR.** The SBSR hook is applied on
+  `PackedAttentionMoT.forward_train` only. `forward_inference`
+  (`flash_attn_varlen_func`) is *not* patched in v0.1, so inference-time
+  top-k speedups are a v0.2 target.
+- **BAGEL forward adapter.** The `train_s1/s2/s3.py` real-train paths
+  raise `NotImplementedError` from a documented adapter slot; the
+  packed-sequence collator that bridges `(image, caption)` batches to
+  `Bagel.forward(sequence_length=, packed_text_ids=, padded_latent=,
+  packed_timesteps=, ...)` is the v0.1.1 follow-up. See
+  `docs/TRAINING.md` §"BAGEL forward adapter".

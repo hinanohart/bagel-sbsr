@@ -41,6 +41,14 @@ shipped in this version** — the pipeline must be trained from scratch on
 
 ## Scope of v0.1.0 (honest)
 
+- **BAGEL forward adapter not implemented.** `train_s1/s2/s3.py` ship
+  the SBSR hook, iMF/DMD2 loss kernels, COYO streaming dataloader,
+  NaN-detect rollback, safetensors checkpoint, and the dry-run path.
+  The packed-sequence collator that bridges `(image, caption)` batches
+  to `Bagel.forward(sequence_length=, packed_text_ids=, padded_latent=,
+  packed_timesteps=, ...)` is a clearly labeled adapter slot that
+  raises `NotImplementedError` until v0.1.1. See `docs/TRAINING.md`
+  §"BAGEL forward adapter".
 - **Training path only.** SBSR is patched on
   `PackedAttentionMoT.forward_train`; `forward_inference` (which uses
   `flash_attn_varlen_func`) is *not* patched in v0.1. Inference-time top-k

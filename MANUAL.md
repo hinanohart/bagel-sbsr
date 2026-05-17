@@ -75,12 +75,31 @@ bash scripts/launch_full.sh
 
 Internally this calls `scripts/launch_runpod.py` per stage, waits on
 the FID/CLIP gate to decide iMF vs DMD2, and emits stage-by-stage
-checkpoints to `runs/`. The script enforces the hard budget ceiling
-(`safety.budget_hard_ceiling_usd: 4000`) and refuses to continue past it.
+checkpoints to `runs/`. Each stage's `launch_runpod.py` enforces the
+per-stage `max_cost_usd` cap (S1 \$800, S2 \$1,700, S3 \$500). The
+wrapper aborts the chain if any stage exits non-zero, so a cap breach
+in stage *N* stops stages *N+1..*.
 
-Total wall-clock: ~10 days on 4×H100 spot. Total spend: ~$2,880 at
-2026-05 RunPod prices. **The runtime is in your account — Claude
-cannot launch this on your behalf, by design (R11 / R13).**
+**Adapter caveat (v0.1.0.dev):** the BAGEL packed-sequence collator
+that bridges `(image, caption)` batches to `Bagel.forward` (see
+`docs/TRAINING.md` §"BAGEL forward adapter") is intentionally not
+written without GPU-side iteration. `train_s1/s2/s3.py` raise
+`NotImplementedError` from the adapter slot on the real-train path
+until v0.1.1. Until then, this command will exit 1 at the first
+adapter call, which is the honest behavior.
+
+Total wall-clock: ~10 days on 4×H100. Total spend depends on the GPU
+pool you draw from at the time you run:
+
+- H100 SXM **on-demand** (~$2.69-2.99/h × 4 GPUs × 240 h): ~$2,580-$2,870
+- H100 SXM **spot** when available: roughly half of on-demand
+- H100 **PCIe** on-demand (~$1.99/h × 4 × 240 h): ~$1,910
+
+`safety.budget_hard_ceiling_usd` (default $4,000) is enforced by
+`launch_runpod.py` — the script polls accumulated cost and calls
+`runpod.terminate_pod` if the ceiling is exceeded. **The runtime is in
+your account — Claude cannot launch this on your behalf, by design
+(R11 / R13).**
 
 ---
 

@@ -168,26 +168,46 @@ def _generate_samples(cfg: dict, ckpt: Path | None, out_dir: Path) -> list[str]:
             arr = (np.random.rand(64, 64, 3) * 255).astype("uint8")
             Image.fromarray(arr).save(out_dir / f"sample_{i:04d}.png")
         return prompts
-    # Real path: load the checkpoint, sample via the InterleaveInferencer.
+    # Real path: load the checkpoint, install SBSR, sample via the InterleaveInferencer.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from sanity_inference import _build_inferencer  # type: ignore[import-not-found]
 
+    from bagel_sbsr import LatentMagnitudeProvider, patch_bagel
+
     inferencer = _build_inferencer(Path(cfg["model"]["weights_dir"]))
-    # Caller is responsible for loading ckpt into inferencer.model — that
-    # path mirrors `_load_safetensors_into` in train_s3.py. Implemented as
-    # a helper here for the eval entrypoint:
+    provider = LatentMagnitudeProvider()
+    patch_bagel(
+        inferencer.model,
+        lambda_init=0.5,
+        mu_init=0.25,
+        top_k=64,
+        saliency_provider=provider,
+        learnable=False,
+    )
     if ckpt is not None:
         import torch
         from safetensors.torch import load_file  # type: ignore[import-not-found]
 
         flat = load_file(str(ckpt))
         own = dict(inferencer.model.named_parameters())
+        sbsr = getattr(inferencer.model, "sbsr", None)
+        sbsr_params = dict(sbsr.named_parameters()) if sbsr is not None else {}
         with torch.no_grad():
             for k, v in flat.items():
-                if k.startswith("gen/"):
-                    local = k[4:]
+                if k.startswith("sbsr/") and sbsr is not None:
+                    local = k[len("sbsr/") :]
+                    if local in sbsr_params:
+                        sbsr.get_parameter(local).copy_(
+                            v.to(sbsr_params[local].dtype).to(sbsr_params[local].device)
+                        )
+                elif k.startswith("gen/"):
+                    local = k[len("gen/") :]
                     if local in own and own[local].shape == v.shape:
-                        own[local].copy_(v.to(own[local].device))
+                        own[local].copy_(v.to(own[local].dtype).to(own[local].device))
+                elif k.startswith("lora/"):
+                    local = k[len("lora/") :]
+                    if local in own and own[local].shape == v.shape:
+                        own[local].copy_(v.to(own[local].dtype).to(own[local].device))
 
     for i, prompt in enumerate(prompts):
         out = inferencer(
