@@ -12,7 +12,9 @@ multimodal backbone (BAGEL-7B, Apache-2.0, Mixture-of-Transformers with shared a
 1. **Saliency-biased Sparse Routing (SBSR)** — can ~30 lines of attention modification
    (additive logit bias from a saliency map, plus top-k sparsification) measurably improve
    compositional T2I scores at near-zero added cost? Saliency is computed for free by
-   reusing the SigLIP2 vision tower's CLS attention rollout — no extra encoder.
+   reusing the FLUX VAE latent magnitude (no extra forward pass). A SigLIP rollout
+   provider is also shipped as an opt-in alternative for users who patch SigLIP to
+   expose attention weights.
 2. **iMF + DMD2 dual distillation** — does an [improved Mean Flow](https://arxiv.org/abs/2512.02012)
    teacher beat [DMD2](https://tianweiy.github.io/dmd2/) for distilling a MoT generation
    expert down to 2-4 NFE? We run both, gate by FID/CLIP at the 10k-step mark, and ship
@@ -24,27 +26,42 @@ flow-matching student.
 
 ## Status
 
-This is `v0.1.0.dev` — pre-release skeleton. See `docs/STATUS.md` for the rolling
-phase tracker (P0 init → P8 release).
+This is `v0.1.0.dev` — pre-release. All code (P0 → P8) is committed:
+SBSR core, S1/S2/S3 training entrypoints, evaluation pipeline,
+ComfyUI nodes, Diffusers pipeline adapter, HF Space demo, model card,
+release notes, and preprint outline. **No model weights** are shipped
+in v0.1.0.dev; training requires the steps in [MANUAL.md](MANUAL.md)
+(~10 days on 4×H100, ~\$2,880 spot).
 
-## Quick start (inference, after release)
+See `docs/STATUS.md` for the per-phase tracker.
+
+## Quick start (no GPU, no secrets)
 
 ```bash
-uv pip install bagel-sbsr
-python -m bagel_sbsr.demo --prompt "a photograph of an astronaut riding a horse" --nfe 4
+git clone https://github.com/hinanohart/bagel-sbsr.git && cd bagel-sbsr
+uv sync
+uv run pytest -q -m smoke                                          # 30 passed
+uv run scripts/train_s1.py --config configs/s1.yaml --dry-run      # patch/unpatch cycle
+uv run scripts/train_s2.py --config configs/s2.yaml --track imf --dry-run
+uv run scripts/train_s3.py --config configs/s3.yaml --dry-run
+uv run scripts/eval.py    --config configs/eval.yaml --dry-run
 ```
 
-## Repository layout (planned; scaffolded as empty dirs in v0.1.0.dev, populated phase-by-phase)
+Each dry-run exercises wire-up + numerical kernels on synthetic data so
+issues surface before you touch a GPU.
+
+## Repository layout
 
 ```
-src/bagel_sbsr/        # SBSR module, pipeline, distillation losses (filled P2+)
-scripts/               # train_s1/s2/s3, eval, download_bagel, launch_runpod (filled P1+)
-tests/                 # unit + smoke tests
-comfyui/               # ComfyUI custom node (filled P7)
-demo/                  # Gradio HF Space app (filled P7)
-papers/                # preprint draft, LaTeX (filled P8)
-docs/                  # STATUS, TRAINING, DATA, ARCH (filled P0)
-experiments/_wip/      # failure museum (R8 convention)
+src/bagel_sbsr/        # SBSR core (sbsr, hook, saliency, latent_saliency, pipeline)
+scripts/               # train_s1/s2/s3, eval, coyo_dataloader, launch_runpod, launch_full.sh
+tests/                 # 30 smoke tests (CPU-only)
+comfyui/               # BagelSBSRLoader + BagelSBSRSampler nodes
+demo/                  # Gradio HF Space app
+papers/                # preprint outline (LaTeX)
+docs/                  # STATUS, TRAINING, DATA, ARCH, EVAL
+configs/               # s1.yaml, s2.yaml, s3.yaml, eval.yaml
+experiments/_wip/      # R8 failure museum
 ```
 
 ## Training recipe (summary)
@@ -55,7 +72,19 @@ experiments/_wip/      # failure museum (R8 convention)
 | S2    | gen-expert full bf16 FT (iMF + DMD2 dual track) | S1 + teacher BAGEL@50-NFE  | ~140h         |
 | S3    | gen-expert + SBSR merged                        | + GenEval/T2I-CompBench    | ~40h          |
 
-Total: ~10 days on 4×H100, ~$2,880 at RunPod spot rates. See `docs/TRAINING.md`.
+Total: ~10 days on 4×H100, ~\$2,880 at RunPod spot rates. See `docs/TRAINING.md`.
+
+**Scope of v0.1.0 (honest)**: SBSR is installed on
+`PackedAttentionMoT.forward_train` only. The `forward_inference` path
+(which uses `flash_attn_varlen_func`) is *not* patched in v0.1, so
+inference-time top-k speedups are a v0.2 target. See `RELEASE_NOTES.md`.
+
+## Launching training (user prerequisites)
+
+See [MANUAL.md](MANUAL.md) for the irreducible manual steps (setting
+HF_TOKEN / RUNPOD_API_KEY, running `scripts/launch_full.sh`). Tokens
+are read by scripts from env vars only — they never appear in
+process listings or logs.
 
 ## License
 

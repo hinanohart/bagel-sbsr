@@ -1,0 +1,68 @@
+# Stage 2 — Distillation (iMF + DMD2 dual track).
+# Run with --track imf or --track dmd2.
+
+run:
+  name: bagel-sbsr-s2-distill
+  seed: 42
+  output_dir: runs/s2
+
+model:
+  weights_dir: weights/bagel-7b-mot
+  vendor_dir: vendor/bagel-upstream
+  dtype: bfloat16
+
+sbsr:
+  lambda_init: 0.5
+  mu_init: 0.25
+  top_k: 64
+  learnable: true
+
+data:
+  dataset: coyo-700m
+  attribution_file: docs/DATA.md
+  mirror_fallback_threshold: 0.3
+  resolution: 512
+  vae_latent_channels: 16
+  shuffle_buffer: 10_000
+
+train:
+  precision: bfloat16
+  global_batch_size: 128
+  per_device_batch_size: 32
+  gradient_accumulation_steps: 1
+  num_steps: 80_000
+  optimizer: adamw_8bit
+  learning_rate: 1.0e-5      # EMF-conformant (arXiv:2604.18168)
+  warmup_steps: 1_000
+  schedule: cosine
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  nan_detect_consecutive: 100
+  log_every: 50
+
+dmd2:
+  fake_update_every: 2
+  lambda_gan: 0.025
+
+gate:
+  check_every: 2_000
+  decision_step: 10_000
+  fail_threshold: 5.0   # composite (FID/10 - CLIP*5); lower is better
+  samples: 256
+  prompts:
+    - "a photograph of a calico cat sitting on a windowsill"
+    - "an oil painting of a sailboat on a stormy sea"
+    - "a 3D render of a futuristic city at sunset"
+    - "a watercolor of a mountain landscape"
+
+cluster:
+  gpus: 4
+  gpu_type: H100-SXM
+  provider: runpod
+  spot: true
+  max_runtime_hours: 160
+  max_cost_usd: 1_700
+
+safety:
+  budget_hard_ceiling_usd: 4_000
+  fail_consecutive_same_kind: 3

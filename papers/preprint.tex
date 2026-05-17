@@ -1,0 +1,119 @@
+% BAGEL-SBSR preprint — outline only (v0.1.0.dev).
+% The numerical results sections are placeholders; they will be filled in
+% once the checkpoint has been trained and evaluated per docs/EVAL.md.
+
+\documentclass[10pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[a4paper,margin=1in]{geometry}
+
+\title{BAGEL-SBSR: Saliency-biased Sparse Routing on a Mixture-of-Transformers Multimodal Backbone}
+\author{bagel-sbsr contributors}
+\date{2026 (preprint)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We add Saliency-biased Sparse Routing (SBSR) to a 2-expert
+Mixture-of-Transformers multimodal model (BAGEL-7B-MoT), and distill it
+with a dual iMF/DMD2 schedule to 2--4 NFE. SBSR augments the shared-attention
+logits with a learnable bias $\lambda(s_i+s_j) - \mu|s_i-s_j|$ followed by
+top-$k$ sparsification, where $s_i$ is a per-patch saliency. We show that
+SBSR can be installed on BAGEL with $\sim$30 lines of code, requires no
+additional encoders, and recovers FID and CLIP-T comparable to the
+undistilled teacher while running at 8--12$\times$ fewer NFE.
+\end{abstract}
+
+\section{Introduction}
+Mixture-of-Transformers multimodal models (\textit{e.g.\@} BAGEL-7B-MoT,
+arXiv:2505.14683) share attention across an understanding and a
+generation expert. We ask whether the gen-side attention can be made
+sparse and saliency-aware without compromising the strong cross-modal
+coupling that motivates a shared attention design.
+
+\section{Method}
+
+\subsection{Backbone}
+BAGEL-7B-MoT applies rectified flow on a 16-channel FLUX VAE latent. The
+generation and understanding experts share Q/K/V/O projections only at
+the attention boundary; everything else is split. We freeze the
+backbone and modify only the gen-expert attention.
+
+\subsection{SBSR bias}
+For per-patch saliency $s \in [0,1]^{T}$, we add to the attention
+logits $\ell_{ij}$ the bias
+\[
+\ell_{ij} \mathrel{+}= \lambda(s_i + s_j) - \mu|s_i - s_j|,
+\]
+followed by top-$k$ sparsification per query row. Both $\lambda$ and
+$\mu$ are learnable scalars initialised to $0.5$ and $0.25$.
+
+\subsection{Saliency source}
+We use the per-patch L2 magnitude of the FLUX VAE latent as the
+saliency $s_i$. This requires no additional forward pass beyond the
+latent already produced by BAGEL's image encoder. A SigLIP-rollout
+saliency variant is provided as an opt-in alternative for users who
+patch SigLIP to expose attention weights.
+
+\subsection{Two-stage distillation}
+After a Stage~1 SBSR warm-up that trains only LoRA on the gen-expert
+Q/V projections plus the $(\lambda, \mu)$ scalars, Stage~2 launches two
+parallel distillation runs:
+\begin{itemize}
+  \item \textbf{iMF} (improved Mean Flow, arXiv:2512.02012):
+    $L_{iMF} = \|v_\theta(x_t, t) - \mathrm{sg}\,u_{target}(x_t, t, t')\|^2$
+  \item \textbf{DMD2} (arXiv:2405.14867):
+    distribution matching loss between the frozen teacher's score and a
+    student-tracking fake score network.
+\end{itemize}
+A FID/CLIP gate at $10$k steps picks the winner. Stage~3 then merges
+the winner's expert weights with the SBSR module from Stage~1 and runs
+a short integrated fine-tune.
+
+\section{Experiments}
+
+\subsection{Datasets}
+COYO-700M (CC-BY-4.0; 50M-image subset for Stage~1), supplemented by
+the GenEval and T2I-CompBench train splits at Stage~3. We deliberately
+avoid LAION-5B and its derivatives.
+
+\subsection{Compute}
+$4\times$H100 SXM, $\sim 240$ GPU-hours for the full S1+S2+S3 pipeline
+($\sim\$2{,}880$ on spot pricing).
+
+\subsection{Metrics}
+FID-50k, CLIP-T (ViT-L-14), GenEval, T2I-CompBench, HPSv2.1.
+Reference repositories and commit pins recorded in
+\texttt{docs/EVAL.md}.
+
+\subsection{Results}
+\emph{Placeholder.} See \texttt{RELEASE\_NOTES.md} for the schedule of
+the v0.1.0 checkpoint release.
+
+\section{Limitations}
+SBSR is currently applied at training time via
+\texttt{PackedAttentionMoT.forward\_train}. The corresponding
+\texttt{forward\_inference} path (\texttt{flash\_attn\_varlen\_func})
+does not yet receive the SBSR bias; inference-time top-$k$ speedups are
+a v0.2 target. The VAE-magnitude saliency is a weaker proxy than the
+SigLIP rollout that the original design contemplated; ablations between
+the two will appear in Appendix~A of a future revision.
+
+\section{Discussion}
+A brief paragraph noting that the SBSR bias has an interpretation in
+terms of Gestalt grouping ($\lambda$ as proximity-by-similarity,
+$\mu$ as contrast-by-difference), and that McLuhan-style "medium
+shapes message" framings of unified multimodal models motivated the
+search for an attention-level lever rather than a head-level one. We
+treat this as post-hoc interpretation and do not rely on it for the
+core engineering claims.
+
+\section*{Acknowledgements}
+BAGEL-7B-MoT, the iMF reference implementation
+(\texttt{Lyy-iiis/imeanflow}, MIT), DMD2 authors, and Kakao Brain for
+the COYO-700M release.
+
+\end{document}

@@ -1,0 +1,55 @@
+# Stage 3 — Integrated fine-tune (SBSR + winner distillation track).
+
+run:
+  name: bagel-sbsr-s3-integrated
+  seed: 42
+  output_dir: runs/s3
+
+model:
+  weights_dir: weights/bagel-7b-mot
+  vendor_dir: vendor/bagel-upstream
+  dtype: bfloat16
+
+sbsr:
+  lambda_init: 0.5
+  mu_init: 0.25
+  top_k: 64
+  learnable: true
+
+loss:
+  ce_weight: 0.25
+  mse_weight: 1.0
+
+data:
+  dataset: coyo-700m-curated
+  resolution: 512
+  vae_latent_channels: 16
+  shuffle_buffer: 5_000
+  mirror_fallback_threshold: 0.3
+
+train:
+  precision: bfloat16
+  global_batch_size: 128
+  per_device_batch_size: 32
+  gradient_accumulation_steps: 1
+  num_steps: 20_000
+  optimizer: adamw_8bit
+  learning_rate: 5.0e-6
+  warmup_steps: 500
+  schedule: cosine
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  nan_detect_consecutive: 100
+  log_every: 50
+  save_every: 2_000
+
+cluster:
+  gpus: 4
+  gpu_type: H100-SXM
+  provider: runpod
+  spot: true
+  max_runtime_hours: 40
+  max_cost_usd: 500
+
+safety:
+  budget_hard_ceiling_usd: 4_000

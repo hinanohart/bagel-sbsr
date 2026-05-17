@@ -1,0 +1,24 @@
+run_name: bagel-sbsr-v0.1.0-eval
+output_dir: runs/eval
+
+model:
+  weights_dir: weights/bagel-7b-mot
+  vendor_dir: vendor/bagel-upstream
+
+# Reference image directory for FID (e.g. COCO 30k-val or COYO-eval-50k).
+# Populate with `scripts/download_eval_refs.py` (TODO P6.1) or symlink.
+reference_set: eval_refs/coco30k
+
+num_timesteps: 4    # student NFE — distilled to 2-4 by S2 + S3
+height: 512
+width: 512
+
+prompts:
+  - "a photograph of a calico cat sitting on a windowsill at sunset"
+  - "an oil painting of a sailboat on a stormy sea"
+  - "a 3D render of a futuristic city at sunset with flying cars"
+  - "a watercolor of a mountain landscape with a misty lake"
+  - "a still life of fruit on a wooden table, soft natural light"
+  - "a portrait of an elderly fisherman in a yellow raincoat"
+  - "a cinematic shot of a samurai facing a dragon"
+  - "a children's-book illustration of a robot and a puppy gardening"
