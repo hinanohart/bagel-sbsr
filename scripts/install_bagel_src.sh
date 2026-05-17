@@ -52,5 +52,6 @@ else
 fi
 
 echo "BAGEL src installed at $DEST (HEAD: $(git -C "$DEST" rev-parse --short HEAD))"
+echo "NOTE: $DEST is Apache-2.0; preserve its LICENSE file when redistributing."
 echo "Add it to PYTHONPATH before importing BAGEL classes:"
 echo "  export PYTHONPATH=\"$(pwd)/$DEST:\${PYTHONPATH:-}\""

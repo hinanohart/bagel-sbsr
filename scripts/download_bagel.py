@@ -21,7 +21,11 @@ from pathlib import Path
 REPO_ID = "ByteDance-Seed/BAGEL-7B-MoT"
 EXPECTED_FILES = (
     "config.json",
+    "llm_config.json",
+    "vit_config.json",
     "tokenizer_config.json",
+    "ae.safetensors",
+    "ema.safetensors",
 )
 
 
@@ -74,7 +78,14 @@ def main() -> int:
         kwargs["revision"] = args.revision
 
     print(f"Downloading {REPO_ID} -> {dest}")
-    path = snapshot_download(**kwargs)
+    try:
+        path = snapshot_download(**kwargs)
+    except Exception as e:
+        # Scrub the token from any exception text. We do NOT print the exception
+        # message body — huggingface_hub <0.24 has been known to embed the
+        # bearer token into URLs inside RepositoryNotFoundError messages.
+        print(f"ERROR: snapshot_download failed ({type(e).__name__})", file=sys.stderr)
+        return 5
     print(f"OK: {path}")
 
     if not is_complete(dest):

@@ -91,3 +91,29 @@ def test_install_bagel_src_help_runs():
     )
     assert r.returncode == 0, r.stderr
     assert "BAGEL_REPO_URL" in r.stdout or "Clone the BAGEL" in r.stdout
+
+
+@pytest.mark.smoke
+def test_bagel_vendor_api_signature_if_present():
+    """When vendor/bagel-upstream/ exists, verify the expected API symbols are importable.
+
+    This guards against the relay-capture scenario where sanity_inference.py
+    references symbols that don't exist in upstream BAGEL. If vendor is not
+    installed (the usual CI case), the test skips cleanly.
+    """
+    vendor = REPO_ROOT / "vendor" / "bagel-upstream"
+    if not (vendor / ".git").exists():
+        pytest.skip(f"vendor source absent at {vendor}; run scripts/install_bagel_src.sh")
+
+    # Add to sys.path only for this test, then drop.
+    inserted = str(vendor.resolve())
+    sys.path.insert(0, inserted)
+    try:
+        from inferencer import InterleaveInferencer  # type: ignore[import-not-found]  # noqa: F401
+        from modeling.bagel import (  # type: ignore[import-not-found]  # noqa: F401
+            Bagel,
+            BagelConfig,
+        )
+    finally:
+        if sys.path and sys.path[0] == inserted:
+            sys.path.pop(0)
