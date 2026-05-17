@@ -1,0 +1,62 @@
+# Stage 1 — SBSR warm-up (LoRA on BAGEL gen-expert q/v + SBSR scalars)
+# All paths are relative to the repo root.
+
+run:
+  name: bagel-sbsr-s1-warmup
+  seed: 42
+  output_dir: runs/s1
+
+model:
+  weights_dir: weights/bagel-7b-mot
+  vendor_dir: vendor/bagel-upstream
+  dtype: bfloat16
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj_moe_gen
+    - v_proj_moe_gen
+
+sbsr:
+  lambda_init: 0.5
+  mu_init: 0.25
+  top_k: 64
+  learnable: true
+
+data:
+  dataset: coyo-700m
+  subset_size: 50_000_000
+  attribution_file: docs/DATA.md
+  mirror_fallback_threshold: 0.3
+  resolution: 512
+
+train:
+  precision: bfloat16
+  quantization: qlora-4bit
+  global_batch_size: 256
+  per_device_batch_size: 64
+  gradient_accumulation_steps: 1
+  num_steps: 30_000
+  optimizer: adamw_8bit
+  learning_rate: 1.0e-4
+  warmup_steps: 1_000
+  schedule: cosine
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  nan_detect_consecutive: 100
+  save_every: 2_500
+  log_every: 50
+
+cluster:
+  gpus: 4
+  gpu_type: H100-SXM
+  provider: runpod
+  spot: true
+  max_runtime_hours: 80
+  max_cost_usd: 800
+
+safety:
+  budget_hard_ceiling_usd: 4_000
+  fail_consecutive_same_kind: 3
