@@ -44,7 +44,7 @@ def test_attention_rollout_shape_and_normalisation():
 def test_attention_rollout_discard_ratio_preserves_per_row_sparsity():
     from bagel_sbsr.saliency import attention_rollout
 
-    B, H, T, L = 1, 1, 6, 1
+    B, H, T = 1, 1, 6
     a = torch.softmax(torch.randn(B, H, T, T), dim=-1)
     rolled = attention_rollout([a], discard_ratio=0.5)
     # Each row should still sum to 1 (renormalisation invariant).

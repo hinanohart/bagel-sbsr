@@ -392,9 +392,7 @@ def _real_train(cfg: dict, resume: Path | None) -> int:
             # packed-sequence collator from a (image, caption) batch is the v0.1.1
             # adapter task. v0.1.0.dev provides the SBSR hook + loss kernels; the
             # adapter is intentionally not written without GPU-side iteration.
-            loss, ce_w_unused, mse_w_unused = _bagel_forward_adapter(
-                model, batch, latent, inferencer, ce_w, mse_w
-            )
+            loss, _, _ = _bagel_forward_adapter(model, batch, latent, inferencer, ce_w, mse_w)
             accelerator.backward(loss)
             if accelerator.sync_gradients:
                 accelerator.clip_grad_norm_(trainable, cfg["train"]["max_grad_norm"])

@@ -103,7 +103,7 @@ def saliency_from_attentions(
         raise ValueError("cls_index must be >= 0")
 
     rollout = attention_rollout(attentions, head_fusion=head_fusion)
-    B, T, _ = rollout.shape
+    _, T, _ = rollout.shape
     if cls_index >= T:
         raise ValueError(f"cls_index {cls_index} out of range for T={T}")
 

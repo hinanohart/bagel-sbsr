@@ -91,7 +91,7 @@ def metric_clip_t(
         return None, "no images"
     scores = []
     with torch.no_grad():
-        for img_path, prompt in zip(images, prompts):
+        for img_path, prompt in zip(images, prompts, strict=False):
             img = preprocess(Image.open(img_path).convert("RGB")).unsqueeze(0)
             text = tokenizer([prompt])
             img_feat = model.encode_image(img)
@@ -140,7 +140,7 @@ def metric_hpsv2(samples_dir: Path, prompts: list[str]) -> tuple[float | None, s
     if not images:
         return None, "no images"
     scores = []
-    for p, prompt in zip(images, prompts):
+    for p, prompt in zip(images, prompts, strict=False):
         s = hpsv2.score([str(p)], prompt)[0]
         scores.append(float(s))
     return sum(scores) / len(scores), "ok"

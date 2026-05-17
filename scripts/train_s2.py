@@ -237,11 +237,10 @@ def _real_train(cfg: dict, track: str, resume: Path | None, s1_ckpt: Path | None
         batch_size=cfg["train"]["per_device_batch_size"],
     )
 
-    step = 0
     t0 = time.time()
     best_gate = float("inf")
 
-    for batch in batch_iter:
+    for step, batch in enumerate(batch_iter):
         if step >= cfg["train"]["num_steps"]:
             break
         with accelerator.accumulate(student):
@@ -313,7 +312,6 @@ def _real_train(cfg: dict, track: str, resume: Path | None, s1_ckpt: Path | None
                 print(f"FAIL: gate not met by step {step}; aborting track {track}")
                 return 1
 
-        step += 1
         provider.reset()
 
     return 0

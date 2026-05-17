@@ -191,7 +191,7 @@ def _wrap_forward_train(
 
         biased_masks: list = []
         offset = 0
-        for n, m in zip(sample_lens, attention_mask):
+        for n, m in zip(sample_lens, attention_mask, strict=False):
             sample_sal = full_saliency[offset : offset + n]
             sample_gen = gen_mask[offset : offset + n]
             offset += n

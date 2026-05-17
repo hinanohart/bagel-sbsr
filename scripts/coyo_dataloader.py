@@ -95,14 +95,14 @@ def stream_coyo(
             r.raise_for_status()
             img = Image.open(io.BytesIO(r.content)).convert("RGB")
             tensor = image_transform(img)
-        except Exception:
+        except Exception as e:
             failed += 1
             if total <= health_window and failed / total > cfg.mirror_fallback_threshold:
                 raise RuntimeError(
                     f"COYO URL liveness below threshold: {failed}/{total} failed "
                     f"in first {health_window} examples (limit "
                     f"{cfg.mirror_fallback_threshold:.0%})"
-                )
+                ) from e
             continue
         yield {"image": tensor, "caption": caption, "url": url}
 
