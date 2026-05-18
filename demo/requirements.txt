@@ -1,4 +1,4 @@
-torch>=2.5,<2.9
+torch>=2.5,<2.13
 torchvision>=0.20
 transformers>=4.46
 accelerate>=1.0
