@@ -2,7 +2,7 @@
 
 > **Saliency-biased Sparse Routing for Mixture-of-Transformers, with iMF/DMD2 dual distillation.**
 > A drop-in extension of [BAGEL-7B-MoT](https://github.com/ByteDance-Seed/Bagel) that adds an
-> object-prior attention routing bias and a 2-4 NFE generation pipeline, fully Apache-2.0.
+> object-prior attention routing bias and a 2-4 NFE generation pipeline, MIT-licensed.
 
 ## What this is
 
@@ -88,7 +88,7 @@ process listings or logs.
 
 ## License
 
-- **Code & weights** (this repo): Apache License 2.0
+- **Code & weights** (this repo): MIT
 - **Backbone**: BAGEL-7B-MoT by ByteDance-Seed, Apache-2.0
 - **Training data**: COYO-700M (CC-BY-4.0) + JourneyDB (research-only, not redistributed)
 

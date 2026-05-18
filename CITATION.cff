@@ -4,7 +4,7 @@ message: "If you use this software, please cite it as below."
 type: software
 version: 0.1.0.dev0
 date-released: "2026-05-17"
-license: Apache-2.0
+license: MIT
 repository-code: "https://github.com/hinanohart/bagel-sbsr"
 authors:
   - name: "bagel-sbsr contributors"
