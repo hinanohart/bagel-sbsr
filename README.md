@@ -2,12 +2,12 @@
 
 > **Saliency-biased Sparse Routing for Mixture-of-Transformers, with iMF/DMD2 dual distillation.**
 > A drop-in extension of [BAGEL-7B-MoT](https://github.com/ByteDance-Seed/Bagel) that adds an
-> object-prior attention routing bias and a 2-4 NFE generation pipeline, fully Apache-2.0.
+> object-prior attention routing bias and a 2-4 NFE generation pipeline, fully MIT.
 
 ## What this is
 
 BAGEL-SBSR is a research OSS that explores two questions on top of a strong unified
-multimodal backbone (BAGEL-7B, Apache-2.0, Mixture-of-Transformers with shared attention):
+multimodal backbone (BAGEL-7B, MIT, Mixture-of-Transformers with shared attention):
 
 1. **Saliency-biased Sparse Routing (SBSR)** — can ~30 lines of attention modification
    (additive logit bias from a saliency map, plus top-k sparsification) measurably improve
@@ -88,8 +88,8 @@ process listings or logs.
 
 ## License
 
-- **Code & weights** (this repo): Apache License 2.0
-- **Backbone**: BAGEL-7B-MoT by ByteDance-Seed, Apache-2.0
+- **Code & weights** (this repo): MIT License
+- **Backbone**: BAGEL-7B-MoT by ByteDance-Seed, MIT
 - **Training data**: COYO-700M (CC-BY-4.0) + JourneyDB (research-only, not redistributed)
 
 LAION-aesthetic v2 is intentionally **excluded** (see `docs/DATA.md` §Safety).
@@ -115,6 +115,6 @@ Issues and PRs welcome. Please run `ruff check` and `pytest -m smoke` before sub
 
 ## Acknowledgements
 
-- [BAGEL](https://github.com/ByteDance-Seed/Bagel) team for the Apache-2.0 MoT backbone
-- [iMeanFlow](https://github.com/Lyy-iiis/imeanflow) for the MIT-licensed reference implementation (Apache-2.0 compatible)
+- [BAGEL](https://github.com/ByteDance-Seed/Bagel) team for the MIT MoT backbone
+- [iMeanFlow](https://github.com/Lyy-iiis/imeanflow) for the MIT-licensed reference implementation (MIT compatible)
 - [DMD2](https://tianweiy.github.io/dmd2/) for the distillation recipe
